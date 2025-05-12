@@ -1,0 +1,212 @@
+import pandas as pd
+import folium
+from folium.plugins import HeatMap, MarkerCluster
+import numpy as np
+
+# Cargar el dataset
+df = pd.read_csv('fires_map.csv')
+
+# Mostrar las primeras filas del dataset para entender su estructura
+print(df.head())
+
+# Verificar información sobre el dataset
+print(df.info())
+print(df.describe())
+
+# Comprobar los valores únicos de la columna 'satellite'
+print(df['satellite'].unique())
+
+# Verificar el rango de valores de 'brightness' para establecer los umbrales
+print("Mínimo de brightness:", df['brightness'].min())
+print("Máximo de brightness:", df['brightness'].max())
+
+# Calcular el centro del mapa basado en los datos
+centro_lat = df['latitude'].mean()
+centro_lon = df['longitude'].mean()
+
+# Definir los umbrales para clasificar los incendios por brightness
+min_brightness = df['brightness'].min()
+max_brightness = df['brightness'].max()
+tercio = (max_brightness - min_brightness) / 3
+umbral_naranja = min_brightness + tercio
+umbral_rojo = min_brightness + 2 * tercio
+
+print(f"Umbral para fuego amarillo: < {umbral_naranja}")
+print(f"Umbral para fuego naranja: {umbral_naranja} - {umbral_rojo}")
+print(f"Umbral para fuego rojo: > {umbral_rojo}")
+
+# Función para determinar el color según el valor de brightness
+def obtener_color(brightness):
+    if brightness < umbral_naranja:
+        return 'yellow'
+    elif brightness < umbral_rojo:
+        return 'orange'
+    else:
+        return 'red'
+
+# Aplicar la función para agregar una columna con el color correspondiente
+df['color'] = df['brightness'].apply(obtener_color)
+print(df['color'].value_counts())
+
+# MAPA 1: MAPA DE CALOR (HEATMAP)
+print("\n--- CREANDO MAPA 1: MAPA DE CALOR ---")
+m1 = folium.Map(location=[centro_lat, centro_lon], zoom_start=4)
+# Preparar los datos para el mapa de calor (latitud, longitud, intensidad opcional)
+heat_data = [[row['latitude'], row['longitude'], row['brightness']] for _, row in df.iterrows()]
+# Agregar el mapa de calor al mapa base
+HeatMap(heat_data, radius=15).add_to(m1)
+# Guardar el mapa
+m1.save('mapa1_calor.html')
+print("Mapa 1 creado.")
+
+# MAPA 2: MARCADORES DE INCENDIOS CON POPUPS
+print("\n--- CREANDO MAPA 2: MARCADORES DE INCENDIOS ---")
+m2 = folium.Map(location=[centro_lat, centro_lon], zoom_start=4)
+
+# Para cada incendio, agregar un marcador con un icono de fuego
+for idx, row in df.iterrows():
+    # Definir el color del icono según el valor de brightness
+    color_icono = obtener_color(row['brightness'])
+    
+    # Crear popup con información del incendio
+    popup_texto = f"""
+    <b>Fecha:</b> {row['acq_date']}<br>
+    <b>Intensidad:</b> {row['brightness']}<br>
+    <b>Satélite:</b> {row['satellite']}<br>
+    <b>Confianza:</b> {row['confidence']}%
+    """
+    
+    # Agregar el marcador al mapa
+    folium.Marker(
+        location=[row['latitude'], row['longitude']],
+        popup=folium.Popup(popup_texto, max_width=300),
+        icon=folium.Icon(color=color_icono, icon='fire', prefix='fa')
+    ).add_to(m2)
+
+# Guardar el mapa
+m2.save('mapa2_marcadores.html')
+print("Mapa 2 creado.")
+
+# MAPA 3: AGRUPACIÓN DE INCENDIOS CON MARKERCLUSTER
+print("\n--- CREANDO MAPA 3: AGRUPACIÓN DE INCENDIOS ---")
+m3 = folium.Map(location=[centro_lat, centro_lon], zoom_start=4)
+
+# Crear un grupo de marcadores cluster
+marker_cluster = MarkerCluster().add_to(m3)
+
+# Para cada incendio, agregar un marcador al cluster
+for idx, row in df.iterrows():
+    # Definir el color del icono según el valor de brightness
+    color_icono = obtener_color(row['brightness'])
+    
+    # Crear popup con información del incendio
+    popup_texto = f"""
+    <b>Fecha:</b> {row['acq_date']}<br>
+    <b>Intensidad:</b> {row['brightness']}<br>
+    <b>Satélite:</b> {row['satellite']}<br>
+    <b>Confianza:</b> {row['confidence']}%
+    """
+    
+    # Agregar el marcador al cluster
+    folium.Marker(
+        location=[row['latitude'], row['longitude']],
+        popup=folium.Popup(popup_texto, max_width=300),
+        icon=folium.Icon(color=color_icono, icon='fire', prefix='fa')
+    ).add_to(marker_cluster)
+
+# Guardar el mapa
+m3.save('mapa3_cluster.html')
+print("Mapa 3 creado.")
+
+# MAPA 4: DIFERENCIAR INCENDIOS POR SATÉLITE
+print("\n--- CREANDO MAPA 4: INCENDIOS POR SATÉLITE ---")
+m4 = folium.Map(location=[centro_lat, centro_lon], zoom_start=4)
+
+# Crear grupos de características para cada satélite
+grupo_aqua = folium.FeatureGroup(name='Satélite Aqua')
+grupo_terra = folium.FeatureGroup(name='Satélite Terra')
+
+# Agregar los marcadores a los grupos correspondientes
+for idx, row in df.iterrows():
+    # Crear popup con información del incendio
+    popup_texto = f"""
+    <b>Fecha:</b> {row['acq_date']}<br>
+    <b>Intensidad:</b> {row['brightness']}<br>
+    <b>Satélite:</b> {row['satellite']}<br>
+    <b>Confianza:</b> {row['confidence']}%
+    """
+    
+    # Determinar el grupo según el satélite
+    if row['satellite'] == 'Aqua':
+        grupo = grupo_aqua
+        color_icono = 'blue'  # Color para Aqua
+    else:  # Terra
+        grupo = grupo_terra
+        color_icono = 'green'  # Color para Terra
+    
+    # Agregar el marcador al grupo correspondiente
+    folium.Marker(
+        location=[row['latitude'], row['longitude']],
+        popup=folium.Popup(popup_texto, max_width=300),
+        icon=folium.Icon(color=color_icono, icon='fire', prefix='fa')
+    ).add_to(grupo)
+
+# Agregar los grupos al mapa
+grupo_aqua.add_to(m4)
+grupo_terra.add_to(m4)
+
+# Agregar control de capas
+folium.LayerControl().add_to(m4)
+
+# Guardar el mapa
+m4.save('mapa4_satelites.html')
+print("Mapa 4 creado.")
+
+# MAPA 5: MAPA CON CAPAS POR COLOR DE INCENDIO
+print("\n--- CREANDO MAPA 5: INCENDIOS POR COLOR (INTENSIDAD) ---")
+m5 = folium.Map(location=[centro_lat, centro_lon], zoom_start=4)
+
+# Crear grupos de características para cada color de incendio
+grupo_amarillo = folium.FeatureGroup(name='Incendios de baja intensidad (Amarillo)')
+grupo_naranja = folium.FeatureGroup(name='Incendios de media intensidad (Naranja)')
+grupo_rojo = folium.FeatureGroup(name='Incendios de alta intensidad (Rojo)')
+
+# Agregar los marcadores a los grupos correspondientes
+for idx, row in df.iterrows():
+    # Crear popup con información del incendio
+    popup_texto = f"""
+    <b>Fecha:</b> {row['acq_date']}<br>
+    <b>Intensidad:</b> {row['brightness']}<br>
+    <b>Satélite:</b> {row['satellite']}<br>
+    <b>Confianza:</b> {row['confidence']}%
+    """
+    
+    # Determinar el grupo según la intensidad (color)
+    color_icono = row['color']
+    if color_icono == 'yellow':
+        grupo = grupo_amarillo
+    elif color_icono == 'orange':
+        grupo = grupo_naranja
+    else:  # 'red'
+        grupo = grupo_rojo
+    
+    # Agregar el marcador al grupo correspondiente
+    folium.Marker(
+        location=[row['latitude'], row['longitude']],
+        popup=folium.Popup(popup_texto, max_width=300),
+        icon=folium.Icon(color=color_icono, icon='fire', prefix='fa')
+    ).add_to(grupo)
+
+# Agregar los grupos al mapa
+grupo_amarillo.add_to(m5)
+grupo_naranja.add_to(m5)
+grupo_rojo.add_to(m5)
+
+# Agregar control de capas
+folium.LayerControl().add_to(m5)
+
+# Guardar el mapa
+m5.save('mapa5_intensidad.html')
+print("Mapa 5 creado.")
+
+print("\nTodos los mapas han sido creados exitosamente.")
